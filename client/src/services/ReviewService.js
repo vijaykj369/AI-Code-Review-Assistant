@@ -12,15 +12,16 @@ export const reviewService = {
     return res.data.data;
   },
 
-  // GET HISTORY
+  // GET HISTORY (FIXED)
   async getHistory({ page = 1, limit = 10 } = {}) {
-  const res = await api.get(`/reviews?page=${page}&limit=${limit}`);
+    const res = await api.get(`/reviews?page=${page}&limit=${limit}`);
 
-  return {
-    reviews: res.data?.data || [],
-    hasMore: res.data?.hasMore || false,
-  };
-},
+    return {
+      reviews: res.data?.data || [],
+      count: res.data?.count || 0,   // ✅ FIXED: now total reviews is available
+      hasMore: res.data?.hasMore || false,
+    };
+  },
 
   // GET SINGLE REVIEW
   async getReviewById(id) {

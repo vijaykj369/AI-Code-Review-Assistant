@@ -49,28 +49,93 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [codeStats, setCodeStats] = useState({
+    total: 0,
+    avgScore: 0,
+    issues: 0,
+  });
+
+  const [repoStats, setRepoStats] = useState({
+    total: 0,
+    avgScore: 0,
+    issues: 0,
+  });
+
   useEffect(() => {
-    const fetchRecent = async () => {
+    const fetchData = async () => {
       try {
+        // 🔵 CODE REVIEWS
         const codeRes = await reviewService.getHistory({
           page: 1,
           limit: 10,
         });
 
+        const codeReviews = codeRes?.reviews || [];
+
+        // 🟣 REPO REVIEWS
         const repoRes = await repoService.getRepoHistory();
+        const repoReviews = repoRes || [];
 
-        const merged = [
-          ...(codeRes?.reviews || []),
-          ...(repoRes || []),
-        ];
+        // 🔥 RECENT ACTIVITY (UI ONLY)
+        const mergedRecent = [...codeReviews, ...repoReviews]
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+          )
+          .slice(0, 4);
 
-        merged.sort(
-          (a, b) =>
-            new Date(b.createdAt || 0) -
-            new Date(a.createdAt || 0)
-        );
+        setRecent(mergedRecent);
 
-        setRecent(merged.slice(0, 4));
+        // 🔵 CODE STATS
+        const codeTotal = codeRes?.count ?? codeReviews.length;
+
+        const codeAvg =
+          codeReviews.length > 0
+            ? Math.round(
+                codeReviews.reduce((acc, r) => acc + (r.score || 0), 0) /
+                  codeReviews.length
+              )
+            : 0;
+
+        const codeIssues = codeReviews.reduce((t, r) => {
+          return (
+            t +
+            (r.bugs?.length || 0) +
+            (r.securityIssues?.length || 0) +
+            (r.performanceIssues?.length || 0)
+          );
+        }, 0);
+
+        setCodeStats({
+          total: codeTotal,
+          avgScore: codeAvg,
+          issues: codeIssues,
+        });
+
+        // 🟣 REPO STATS
+        const repoTotal = repoReviews.length;
+
+        const repoAvg =
+          repoReviews.length > 0
+            ? Math.round(
+                repoReviews.reduce((acc, r) => acc + (r.score || 0), 0) /
+                  repoReviews.length
+              )
+            : 0;
+
+       const repoIssues = repoReviews.reduce((t, r) => {
+  return (
+    t +
+    (r.securityIssues?.length || 0) +
+    (r.performanceIssues?.length || 0)
+  );
+}, 0);
+
+        setRepoStats({
+          total: repoTotal,
+          avgScore: repoAvg,
+          issues: repoIssues,
+        });
       } catch (err) {
         console.error('Dashboard error:', err);
         setRecent([]);
@@ -79,29 +144,8 @@ export default function DashboardPage() {
       }
     };
 
-    fetchRecent();
+    fetchData();
   }, []);
-
-  const totalReviews = recent.length;
-
-  const avgScore =
-    recent.length > 0
-      ? Math.round(
-          recent.reduce((acc, r) => acc + (r.score || 0), 0) /
-            recent.length
-        )
-      : 0;
-
-  const totalIssues = recent.reduce((total, r) => {
-    return (
-      total +
-      (r.bugs?.length || 0) +
-      (r.securityIssues?.length || 0) +
-      (r.performanceIssues?.length || 0)
-    );
-  }, 0);
-
-  const totalRepos = recent.filter((r) => r.repoName).length;
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -110,34 +154,62 @@ export default function DashboardPage() {
           Good morning, {firstName}
         </h1>
         <p className="text-sm text-gray-500">
-          Here's what's happening with your code reviews.
+          Here's what's happening with your code & repo reviews.
         </p>
       </div>
 
-      {/* STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
-        <StatCard label="Total Reviews" value={totalReviews} sub="Recent activity" />
+      {/* 🔵 CODE REVIEWS SECTION */}
+      <div className="mb-8">
+        <h2 className="text-sm text-gray-300 mb-3">Code Reviews</h2>
 
-        <StatCard
-          label="Avg Score"
-          value={avgScore}
-          sub="Based on latest reviews"
-          valueClass="text-green-400"
-        />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <StatCard
+            label="Total Code Reviews"
+            value={codeStats.total}
+            sub="All-time code analysis"
+          />
 
-        <StatCard
-          label="Issues Found"
-          value={totalIssues}
-          sub="Bugs + security + performance"
-          valueClass="text-yellow-400"
-        />
+          <StatCard
+            label="Avg Score"
+            value={codeStats.avgScore}
+            sub="Code quality score"
+            valueClass="text-green-400"
+          />
 
-        <StatCard
-          label="Repositories"
-          value={totalRepos}
-          sub="Repo reviews"
-          valueClass="text-accent"
-        />
+          <StatCard
+            label="Issues Found"
+            value={codeStats.issues}
+            sub="Bugs + security + performance"
+            valueClass="text-yellow-400"
+          />
+        </div>
+      </div>
+
+      {/* 🟣 REPO REVIEWS SECTION */}
+      <div className="mb-8">
+        <h2 className="text-sm text-gray-300 mb-3">Repo Reviews</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <StatCard
+            label="Total Repo Reviews"
+            value={repoStats.total}
+            sub="Repository analysis runs"
+          />
+
+          <StatCard
+            label="Avg Score"
+            value={repoStats.avgScore}
+            sub="Repo quality score"
+            valueClass="text-green-400"
+          />
+
+          <StatCard
+            label="Issues Found"
+            value={repoStats.issues}
+            sub="Repo-level issues"
+            valueClass="text-yellow-400"
+          />
+        </div>
       </div>
 
       {/* QUICK ACTIONS */}
@@ -157,10 +229,10 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* RECENT */}
+      {/* RECENT ACTIVITY */}
       <div className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-dark-border flex justify-between">
-          <p className="text-sm text-gray-300">Recent Reviews</p>
+          <p className="text-sm text-gray-300">Recent Activity</p>
 
           <button
             onClick={() => navigate('/history')}
@@ -173,7 +245,7 @@ export default function DashboardPage() {
         {loading ? (
           <div className="p-5 text-gray-500">Loading...</div>
         ) : recent.length === 0 ? (
-          <div className="p-5 text-gray-500">No reviews yet</div>
+          <div className="p-5 text-gray-500">No activity yet</div>
         ) : (
           recent.map((r, i) => {
             const scoreClass =
@@ -190,7 +262,7 @@ export default function DashboardPage() {
               >
                 <div>
                   <p className="text-sm text-gray-300">
-                    {r.repoName || r.language}
+                    {r.repoName || r.language || 'Repository'}
                   </p>
 
                   <p className="text-xs text-gray-500">
@@ -200,7 +272,7 @@ export default function DashboardPage() {
 
                 <div className="text-right">
                   <p className={`font-bold ${scoreClass}`}>
-                    {r.score}
+                    {r.score ?? '-'}
                   </p>
 
                   <p className="text-xs text-gray-500">
