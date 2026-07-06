@@ -5,20 +5,31 @@ const groq = new Groq({
   apiKey: env.groqApiKey,
 });
 
-// Helper function to normalize arrays
+// =========================
+// HELPERS
+// =========================
+
 const normalizeArray = (arr = []) =>
-  arr.map((item) =>
+  (Array.isArray(arr) ? arr : []).map((item) =>
     typeof item === 'string'
       ? item
-      : item.description ||
-        item.message ||
-        item.issue ||
+      : item?.description ||
+        item?.message ||
+        item?.issue ||
         JSON.stringify(item)
   );
+
+// Clamp score strictly between 0–100
+const clampScore100 = (score) => {
+  const num = Number(score);
+  if (isNaN(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+};
 
 // =========================
 // SINGLE CODE REVIEW
 // =========================
+
 const reviewCode = async ({ language, code }) => {
   try {
     console.log('🔥 Calling GROQ...');
@@ -27,25 +38,25 @@ const reviewCode = async ({ language, code }) => {
     const prompt = `
 You are an expert software engineer.
 
-IMPORTANT:
+IMPORTANT RULES:
 - Return ONLY valid JSON.
-- Do NOT use markdown.
-- Do NOT add explanations outside JSON.
-- ALL arrays must contain STRINGS ONLY.
+- No markdown.
+- No explanations outside JSON.
+- Score MUST be an INTEGER between 0 and 100.
 
-Return exactly this structure:
+STRICT OUTPUT FORMAT:
 
 {
   "score": 0,
-  "bugs": ["bug"],
-  "securityIssues": ["issue"],
-  "performanceIssues": ["issue"],
-  "suggestions": ["suggestion"],
-  "improvedCode": "complete improved code",
-  "summary": "overall summary"
+  "bugs": ["string"],
+  "securityIssues": ["string"],
+  "performanceIssues": ["string"],
+  "suggestions": ["string"],
+  "improvedCode": "string",
+  "summary": "string"
 }
 
-Review this ${language} code:
+Analyze this ${language} code:
 
 ${code}
 `;
@@ -64,26 +75,25 @@ ${code}
       temperature: 0,
     });
 
-    console.log('========== RAW RESPONSE ==========');
+    console.log('========== RAW CODE RESPONSE ==========');
     console.log(completion.choices[0].message.content);
-    console.log('==================================');
+    console.log('=======================================');
 
-    const result = JSON.parse(
-      completion.choices[0].message.content
-    );
+    const result = JSON.parse(completion.choices[0].message.content);
 
     return {
-      score: Number(result.score) || 0,
+      score: clampScore100(result.score),
+
       bugs: normalizeArray(result.bugs),
       securityIssues: normalizeArray(result.securityIssues),
       performanceIssues: normalizeArray(result.performanceIssues),
       suggestions: normalizeArray(result.suggestions),
+
       improvedCode: result.improvedCode || code,
       summary: result.summary || '',
     };
   } catch (error) {
-    console.error('GROQ CODE REVIEW ERROR:');
-    console.error(error);
+    console.error('GROQ CODE REVIEW ERROR:', error);
 
     return {
       score: 0,
@@ -100,36 +110,69 @@ ${code}
 // =========================
 // REPOSITORY REVIEW
 // =========================
+
 const reviewRepository = async (files) => {
   try {
-    const repositoryCode = files
-      .map(
-        (file) =>
-          `FILE: ${file.path}\n${file.content}`
-      )
+    const limitedFiles = files
+      .filter((file) => file.content && file.content.length > 0)
+      .slice(0, 5);
+
+    if (limitedFiles.length === 0) {
+      return {
+        score: 0,
+        architectureFeedback: ['No supported files found'],
+        securityIssues: [],
+        performanceIssues: [],
+        suggestions: [],
+        summary: 'Repository contains no supported source files.',
+      };
+    }
+
+    console.log(`📁 Reviewing ${limitedFiles.length} files`);
+
+    console.log(
+      'Review files:',
+      limitedFiles.map((f) => `${f.path} (${f.content.length} chars)`)
+    );
+
+    const repositoryCode = limitedFiles
+      .map((file) => `FILE: ${file.path}\n${file.content}`)
       .join('\n\n');
 
     const prompt = `
 You are a senior software architect.
 
-IMPORTANT:
-- Return ONLY valid JSON.
-- Do NOT use markdown.
-- Do NOT add explanations outside JSON.
-- ALL arrays must contain STRINGS ONLY.
+Analyze this repository architecture.
 
-Return exactly this structure:
+IMPORTANT RULES:
+- Return ONLY valid JSON.
+- No markdown.
+- No explanations outside JSON.
+- Score MUST be an INTEGER between 0 and 100.
+
+Analyze:
+1. Project structure
+2. Frontend architecture
+3. Backend architecture
+4. Authentication
+5. Database design
+6. Security
+7. Performance
+8. Scalability
+9. Maintainability
+
+STRICT OUTPUT FORMAT:
 
 {
   "score": 0,
-  "architectureFeedback": ["feedback"],
-  "securityIssues": ["issue"],
-  "performanceIssues": ["issue"],
-  "suggestions": ["suggestion"],
-  "summary": "overall repository summary"
+  "architectureFeedback": ["string"],
+  "securityIssues": ["string"],
+  "performanceIssues": ["string"],
+  "suggestions": ["string"],
+  "summary": "string"
 }
 
-Review this repository:
+Repository:
 
 ${repositoryCode}
 `;
@@ -148,33 +191,24 @@ ${repositoryCode}
       temperature: 0,
     });
 
-    console.log('========== REPO RESPONSE ==========');
+    console.log('========== RAW REPO RESPONSE ==========');
     console.log(completion.choices[0].message.content);
-    console.log('===================================');
+    console.log('=======================================');
 
-    const result = JSON.parse(
-      completion.choices[0].message.content
-    );
+    const result = JSON.parse(completion.choices[0].message.content);
 
     return {
-      score: Number(result.score) || 0,
-      architectureFeedback: normalizeArray(
-        result.architectureFeedback
-      ),
-      securityIssues: normalizeArray(
-        result.securityIssues
-      ),
-      performanceIssues: normalizeArray(
-        result.performanceIssues
-      ),
-      suggestions: normalizeArray(
-        result.suggestions
-      ),
+      score: clampScore100(result.score),
+
+      architectureFeedback: normalizeArray(result.architectureFeedback),
+      securityIssues: normalizeArray(result.securityIssues),
+      performanceIssues: normalizeArray(result.performanceIssues),
+      suggestions: normalizeArray(result.suggestions),
+
       summary: result.summary || '',
     };
   } catch (error) {
-    console.error('REPOSITORY REVIEW ERROR:');
-    console.error(error);
+    console.error('REPOSITORY REVIEW ERROR:', error);
 
     return {
       score: 0,
@@ -186,6 +220,10 @@ ${repositoryCode}
     };
   }
 };
+
+// =========================
+// EXPORTS
+// =========================
 
 module.exports = {
   reviewCode,

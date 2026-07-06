@@ -22,5 +22,6 @@ module.exports = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   groqApiKey: process.env.GROQ_API_KEY || '',
+  githubToken: process.env.GITHUB_TOKEN || '',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 };
