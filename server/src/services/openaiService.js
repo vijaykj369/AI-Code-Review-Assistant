@@ -1,57 +1,190 @@
+const Groq = require('groq-sdk');
+const env = require('../config/env');
+
+const groq = new Groq({
+  apiKey: env.groqApiKey,
+});
+
+// Helper function to normalize arrays
+const normalizeArray = (arr = []) =>
+  arr.map((item) =>
+    typeof item === 'string'
+      ? item
+      : item.description ||
+        item.message ||
+        item.issue ||
+        JSON.stringify(item)
+  );
+
+// =========================
+// SINGLE CODE REVIEW
+// =========================
 const reviewCode = async ({ language, code }) => {
-  return {
-    score: 80,
+  try {
+    console.log('🔥 Calling GROQ...');
+    console.log('Key exists:', !!env.groqApiKey);
 
-    bugs: ['No major bugs detected'],
+    const prompt = `
+You are an expert software engineer.
 
-    securityIssues: [
-      'No critical security issues found',
-    ],
+IMPORTANT:
+- Return ONLY valid JSON.
+- Do NOT use markdown.
+- Do NOT add explanations outside JSON.
+- ALL arrays must contain STRINGS ONLY.
 
-    performanceIssues: [
-      'Consider optimizing loops for larger datasets',
-    ],
+Return exactly this structure:
 
-    suggestions: [
-      'Use meaningful variable names',
-      'Add comments for complex logic',
-      'Handle edge cases and invalid inputs',
-    ],
+{
+  "score": 0,
+  "bugs": ["bug"],
+  "securityIssues": ["issue"],
+  "performanceIssues": ["issue"],
+  "suggestions": ["suggestion"],
+  "improvedCode": "complete improved code",
+  "summary": "overall summary"
+}
 
-    improvedCode: code,
+Review this ${language} code:
 
-    summary: `The ${language} code is functional and follows basic coding standards. Minor improvements can be made for readability and maintainability.`,
-  };
+${code}
+`;
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: {
+        type: 'json_object',
+      },
+      temperature: 0,
+    });
+
+    console.log('========== RAW RESPONSE ==========');
+    console.log(completion.choices[0].message.content);
+    console.log('==================================');
+
+    const result = JSON.parse(
+      completion.choices[0].message.content
+    );
+
+    return {
+      score: Number(result.score) || 0,
+      bugs: normalizeArray(result.bugs),
+      securityIssues: normalizeArray(result.securityIssues),
+      performanceIssues: normalizeArray(result.performanceIssues),
+      suggestions: normalizeArray(result.suggestions),
+      improvedCode: result.improvedCode || code,
+      summary: result.summary || '',
+    };
+  } catch (error) {
+    console.error('GROQ CODE REVIEW ERROR:');
+    console.error(error);
+
+    return {
+      score: 0,
+      bugs: ['Failed to analyze code'],
+      securityIssues: [],
+      performanceIssues: [],
+      suggestions: ['Please try again'],
+      improvedCode: code,
+      summary: 'AI review unavailable.',
+    };
+  }
 };
 
 // =========================
 // REPOSITORY REVIEW
 // =========================
 const reviewRepository = async (files) => {
-  return {
-    score: 82,
+  try {
+    const repositoryCode = files
+      .map(
+        (file) =>
+          `FILE: ${file.path}\n${file.content}`
+      )
+      .join('\n\n');
 
-    architectureFeedback: [
-      'Project structure is organized and maintainable',
-      'Controllers and services are separated correctly',
-    ],
+    const prompt = `
+You are a senior software architect.
 
-    securityIssues: [
-      'No critical security issues found',
-    ],
+IMPORTANT:
+- Return ONLY valid JSON.
+- Do NOT use markdown.
+- Do NOT add explanations outside JSON.
+- ALL arrays must contain STRINGS ONLY.
 
-    performanceIssues: [
-      'Consider caching expensive operations',
-    ],
+Return exactly this structure:
 
-    suggestions: [
-      'Add unit tests',
-      'Improve documentation',
-      'Increase error handling coverage',
-    ],
+{
+  "score": 0,
+  "architectureFeedback": ["feedback"],
+  "securityIssues": ["issue"],
+  "performanceIssues": ["issue"],
+  "suggestions": ["suggestion"],
+  "summary": "overall repository summary"
+}
 
-    summary: `Repository contains ${files.length} supported source files and follows a clean architecture.`,
-  };
+Review this repository:
+
+${repositoryCode}
+`;
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: {
+        type: 'json_object',
+      },
+      temperature: 0,
+    });
+
+    console.log('========== REPO RESPONSE ==========');
+    console.log(completion.choices[0].message.content);
+    console.log('===================================');
+
+    const result = JSON.parse(
+      completion.choices[0].message.content
+    );
+
+    return {
+      score: Number(result.score) || 0,
+      architectureFeedback: normalizeArray(
+        result.architectureFeedback
+      ),
+      securityIssues: normalizeArray(
+        result.securityIssues
+      ),
+      performanceIssues: normalizeArray(
+        result.performanceIssues
+      ),
+      suggestions: normalizeArray(
+        result.suggestions
+      ),
+      summary: result.summary || '',
+    };
+  } catch (error) {
+    console.error('REPOSITORY REVIEW ERROR:');
+    console.error(error);
+
+    return {
+      score: 0,
+      architectureFeedback: ['Repository analysis failed'],
+      securityIssues: [],
+      performanceIssues: [],
+      suggestions: ['Please try again'],
+      summary: 'Repository review unavailable.',
+    };
+  }
 };
 
 module.exports = {
