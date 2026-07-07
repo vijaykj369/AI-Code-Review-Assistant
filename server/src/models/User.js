@@ -6,6 +6,14 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// Email validation regex
+const emailRegex =
+  /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+// Strong password validation regex
+const passwordRegex =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&^#()_+\-=[\]{};':\\|,.<>/?]).{8,}$/;
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -13,47 +21,64 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Name is required'],
       trim: true,
     },
+
     email: {
       type: String,
       required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
+      match: [
+        emailRegex,
+        'Please provide a valid email address',
+      ],
     },
+
     password: {
       type: String,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters'],
-      select: false, // never return password by default in queries
+      validate: {
+        validator(value) {
+          return passwordRegex.test(value);
+        },
+        message:
+          'Password must contain at least 8 characters, including an uppercase letter, lowercase letter, number, and special character.',
+      },
+      select: false, // Never return password by default
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// Hash the password before saving, but only if it was actually
-// modified (avoids re-hashing an already-hashed password when
-// updating other fields like `name`).
+// Hash the password before saving, but only if it was actually modified.
 userSchema.pre('save', async function hashPassword(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password')) {
+    return next();
+  }
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+
   next();
 });
 
-// Instance method to compare a plaintext password against the
-// stored hash. Keeps bcrypt usage out of the controller layer.
-userSchema.methods.comparePassword = async function comparePassword(candidatePassword) {
+// Compare entered password with hashed password
+userSchema.methods.comparePassword = async function comparePassword(
+  candidatePassword
+) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Strip password (and __v) when the user object is sent as JSON,
-// as a second layer of defense beyond `select: false`.
+// Remove sensitive fields when converting to JSON
 userSchema.methods.toJSON = function toJSON() {
   const obj = this.toObject();
+
   delete obj.password;
   delete obj.__v;
+
   return obj;
 };
 

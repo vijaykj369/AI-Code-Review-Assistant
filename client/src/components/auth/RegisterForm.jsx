@@ -66,15 +66,17 @@ export default function RegisterForm() {
         <label className="block text-xs font-medium text-gray-400 mb-1.5">
           Password
         </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          placeholder="At least 6 characters"
-          className="w-full bg-dark-bg border border-dark-border rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
-        />
+       <input
+  type="password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  required
+  minLength={8}
+  pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&^#()_+\-=[\]{};':\\|,.<>/?])[A-Za-z\d@$!%*?&^#()_+\-=[\]{};':\\|,.<>/?]{8,}$"
+  title="Password must be at least 8 characters and include an uppercase letter, lowercase letter, number, and special character."
+  placeholder="Min 8 chars • A-Z • a-z • 0-9 • Special"
+  className="w-full bg-dark-bg border border-dark-border rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+/>
       </div>
 
       <button
